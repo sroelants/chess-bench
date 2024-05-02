@@ -5,7 +5,6 @@ use clap::Parser;
 use engine::Engine;
 use positions::POSITIONS;
 use search_result::SearchResult;
-use colored::Colorize;
 
 use crate::diff::ResultDiff;
 
