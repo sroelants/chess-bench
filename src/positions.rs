@@ -59,7 +59,7 @@ pub const POSITIONS: [&str; 163] = [
 
     // Eigenmann rapid test
     // https://www.chessprogramming.org/Eigenmann_Rapid_Engine_Test
-    //
+
     "r1bqk1r1/1p1p1n2/p1n2pN1/2p1b2Q/2P1Pp2/1PN5/PB4PP/R4RK1 w q - 0 0",
     "r1n2N1k/2n2K1p/3pp3/5Pp1/b5R1/8/1PPP4/8 w - - 0 0",
     "r1b1r1k1/1pqn1pbp/p2pp1p1/P7/1n1NPP1Q/2NBBR2/1PP3PP/R6K w - - 0 0",
