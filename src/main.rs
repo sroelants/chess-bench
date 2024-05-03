@@ -6,7 +6,7 @@ use engine::Engine;
 use positions::POSITIONS;
 use search_result::SearchResult;
 
-use crate::diff::ResultDiff;
+use crate::diff::{DiffReport, ResultDiff};
 
 mod positions;
 mod search_result;
@@ -53,6 +53,7 @@ fn main() -> anyhow::Result<()> {
     if let Ok(file) = std::fs::File::open(snapshot) {
         // Diff instead: use the fens and depths from the snapshot
         let snapshot: Vec<SearchResult> = serde_json::from_reader(BufReader::new(file))?;
+        let mut diffs: Vec<ResultDiff> = Vec::new();
 
         println!("{:^75} | {:^32} | {:^32} | {:^32} | {:^21} | {:^20}", 
             "FEN",
@@ -72,7 +73,12 @@ fn main() -> anyhow::Result<()> {
 
             println!("{}", diff);
             results.push(result);
+            diffs.push(diff);
         }
+
+        let report = DiffReport::new(&diffs);
+        println!("");
+        println!("{report}");
     } else {
         let suite: Vec<String> = if let Some(file) = fens {
             std::fs::read_to_string(file)
