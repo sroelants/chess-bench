@@ -1,5 +1,5 @@
 use std::io::{ BufRead, BufReader, BufWriter, Write };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::search_result::SearchResult;
 
@@ -21,7 +21,8 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(path: PathBuf) -> anyhow::Result<Self> {
+    pub fn new(path: &Path) -> anyhow::Result<Self> {
+        let path = path.to_owned();
         let mut process = Command::new(&path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -92,6 +93,7 @@ impl Engine {
             best_move, 
             latest_info.nodes.unwrap(), 
             latest_info.time.unwrap(), 
+            latest_info.score.unwrap(),
             depth
         ))
     }

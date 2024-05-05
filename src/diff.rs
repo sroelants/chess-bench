@@ -1,313 +1,551 @@
 use std::fmt::Display;
-
-use colored::{ Color, Colorize };
-
+use std::iter::Sum;
+use std::ops::Add;
+use std::ops::Div;
+use colored::Color;
+use colored::Colorize;
+use serde::Deserialize;
+use serde::Serialize;
 use crate::search_result::SearchResult;
 
-pub struct ResultDiff {
-    position: String,
-    nodes: Diff<u32>,
-    time: Diff<u32>,
-    nps: Diff<u32>,
-    branching_factor: Diff<f32>,
-    best_move: Diff<String>,
+////////////////////////////////////////////////////////////////////////////////
+/// 
+/// Diff
+///
+////////////////////////////////////////////////////////////////////////////////
+#[derive(Default)]
+pub struct Diff {
+    pub position: String,
+    pub depth: usize,
+    pub nodes: NodeDiff,
+    pub time: TimeDiff,
+    pub nps: NpsDiff,
+    pub score: ScoreDiff,
+    pub branching_factor: BFactorDiff,
 }
 
-impl Display for ResultDiff {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:<75} | {:>30} | {:>30} | {:>30} | {:>30} | {:>30}", 
-            format!("{}", self.position).blue(), 
-            self.nodes, 
-            self.time, 
-            self.nps, 
-            self.branching_factor, 
-            self.best_move
-        )
-    }
-}
-
-impl ResultDiff {
-    pub fn new(first: SearchResult, second: SearchResult) -> Self {
+impl Diff {
+    pub fn new(first: &SearchResult, second: &SearchResult) -> Self {
         Self {
-            position: first.position,
-            nodes: Diff::new(first.nodes, second.nodes),
-            time: Diff::new(first.time as u32, second.time as u32),
-            nps: Diff::new(first.nps, second.nps),
-            branching_factor: Diff::new(first.branching_factor, second.branching_factor),
-            best_move: Diff::new(first.best_move, second.best_move),
+            position: first.position.clone(),
+            depth: first.depth,
+            nodes: NodeDiff::new(first.nodes, second.nodes),
+            time: TimeDiff::new(first.time, second.time),
+            nps: NpsDiff::new(first.nps, second.nps),
+            score: ScoreDiff::new(first.score, second.score),
+            branching_factor: BFactorDiff::new(first.branching_factor, second.branching_factor)
         }
     }
 }
 
-pub struct Diff<T> where T: Display {
-    first: T,
-    second: T,
-}
+impl Add for Diff {
+    type Output = Diff;
 
-impl<T> Diff<T> where T: Display {
-    pub fn new(first: T, second: T) -> Self {
-        Self { first, second }
-    }
-}
-
-impl Display for Diff<u32> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let color = if self.first > self.second {
-            Color::Green
-        } else if self.first > self.second {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let relative = (self.second as f32 - self.first as f32) / self.second as f32;
-
-        let first = format!("{:>10.2}", self.first).black();
-        let second = format!("{:>10.2}", self.second).color(color);
-        let relative = format!("{:>+5.2}%", relative).color(color);
-
-        write!(f, "{first} {second} ({relative:>8})")
-    }
-}
-
-impl Display for Diff<f32> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let color = if self.first > self.second {
-            Color::Green
-        } else if self.first > self.second {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let relative = (self.second as f32 - self.first as f32) / self.second as f32;
-
-        let first = format!("{:>6.2}", self.first).black();
-        let second = format!("{:>6.2}", self.second).color(color);
-        let relative = format!("{:>+.2}", relative).color(color);
-
-        write!(f, "{first} {second} ({relative})")
-    }
-}
-
-impl Display for Diff<String> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let color = if self.first != self.second {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let first = format!("{:>8}", self.first).black();
-        let second = format!("{:>8}", self.second).color(color);
-
-        write!(f, "{first} {second}")
-    }
-}
-
-pub struct DiffReport {
-    entries: usize,
-
-    nodes_total: u32,
-    nodes_average: u32,
-    nodes_relative_average: f32,
-    nodes_improvement: u32,
-
-    time_total: u32,
-    time_average: u32,
-    time_relative_average: f32,
-    time_improvement: u32,
-
-    nps_average: u32,
-    nps_relative_average: f32,
-    nps_improvement: u32,
-
-    branching_factor_average: f32,
-    branching_factor_relative_average: f32,
-    branching_factor_improvement: u32,
-}
-
-impl DiffReport {
-    pub fn new(diffs: &[ResultDiff]) -> Self {
-        let entries = diffs.len().max(1);
-
-        // Nodes
-        let nodes_total = diffs.iter()
-            .map(|diff| diff.nodes.second)
-            .sum::<u32>();
-
-        let nodes_average = nodes_total / entries as u32;
-        let nodes_relative_average = diffs.iter()
-            .map(|diff| relative(diff.nodes.first as f32, diff.nodes.second as f32))
-            .sum::<f32>() / entries as f32;
-
-        let nodes_improvement = diffs.iter()
-            .filter(|diff| diff.nodes.second < diff.nodes.first)
-            .count() as u32;
-
-        // Time
-        let time_improvement = diffs.iter()
-            .filter(|diff| diff.time.second < diff.time.first)
-            .count() as u32;
-        let time_total = diffs.iter()
-            .map(|diff| diff.time.second)
-            .sum::<u32>();
-        let time_average = time_total / entries as u32;
-        let time_relative_average = diffs.iter()
-            .map(|diff| relative(diff.time.first as f32, diff.time.second as f32))
-            .sum::<f32>() / entries as f32;
-
-        //Nps
-        let nps_improvement = diffs.iter()
-            .filter(|diff| diff.nps.second > diff.nps.first)
-            .count() as u32;
-        let nps_total = diffs.iter()
-            .map(|diff| diff.nps.second)
-            .sum::<u32>();
-        let nps_average = nps_total / entries as u32;
-        let nps_relative_average = diffs.iter()
-            .map(|diff| relative(diff.nps.first as f32, diff.nps.second as f32))
-            .sum::<f32>() / entries as f32;
-
-        // Branching factor
-        let branching_factor_improvement = diffs.iter()
-            .filter(|diff| diff.branching_factor.second < diff.branching_factor.first)
-            .count() as u32;
-        let branching_factor_total = diffs.iter()
-            .map(|diff| diff.branching_factor.second)
-            .sum::<f32>();
-
-        let branching_factor_relative_average = diffs.iter()
-            .map(|diff| relative(diff.branching_factor.first, diff.branching_factor.second))
-            .sum::<f32>() / entries as f32;
-
-        let branching_factor_average = branching_factor_total / entries as f32;
-
+    fn add(self, rhs: Self) -> Self::Output {
         Self {
-            entries,
-            nodes_total,
-            nodes_average,
-            nodes_relative_average,
-            nodes_improvement,
-
-            time_total,
-            time_average,
-            time_relative_average,
-            time_improvement,
-
-            nps_average,
-            nps_relative_average,
-            nps_improvement,
-
-            branching_factor_average,
-            branching_factor_relative_average,
-            branching_factor_improvement
+            position: String::new(),
+            depth: self.depth,
+            nodes: self.nodes + rhs.nodes,
+            time: self.time + rhs.time,
+            nps: self.nps + rhs.nps,
+            score: self.score + rhs.score,
+            branching_factor: self.branching_factor + rhs.branching_factor,
         }
     }
 }
 
-impl Display for DiffReport {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let nodes_relative_color = if self.nodes_relative_average < 0.0 {
-            Color::Green
-        } else if self.nodes_relative_average > 0.0 {
-            Color::Red
-        } else {
-            Color::Black
-        };
+impl Div<usize> for Diff {
+    type Output = Self;
 
-        let nodes_improvement_color = if self.nodes_improvement > self.entries as u32 / 2 {
-            Color::Green
-        } else if self.nodes_improvement < self.entries as u32 / 2 {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let time_relative_color = if self.time_relative_average < 0.0 {
-            Color::Green
-        } else if self.time_relative_average > 0.0 {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let time_improvement_color = if self.time_improvement > self.entries as u32 / 2 {
-            Color::Green
-        } else if self.time_improvement < self.entries as u32 / 2 {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let nps_relative_color = if self.nps_relative_average > 0.0 {
-            Color::Green
-        } else if self.nps_relative_average < 0.0 {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let nps_improvement_color = if self.nps_improvement > self.entries as u32 / 2 {
-            Color::Green
-        } else if self.nps_improvement < self.entries as u32 / 2 {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let branching_factor_relative_color = if self.branching_factor_relative_average < 0.0 {
-            Color::Green
-        } else if self.branching_factor_relative_average > 0.0 {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        let branching_factor_improvement_color = if self.branching_factor_improvement > self.entries as u32 / 2 {
-            Color::Green
-        } else if self.branching_factor_improvement < self.entries as u32 / 2 {
-            Color::Red
-        } else {
-            Color::Black
-        };
-
-        writeln!(f, "Report")?;
-        writeln!(f, "----------------------------------------------------------")?;
-
-        writeln!(f, "Nodes")?;
-        writeln!(f, "-----")?;
-        writeln!(f, "  Total:       {:>9} nodes", self.nodes_total)?;
-        writeln!(f, "  Average:     {:>9} nodes", self.nodes_average)?;
-        writeln!(f, "  Relative:    {}", format!("{:>+9.2}%", 100.0*self.nodes_relative_average).color(nodes_relative_color))?;
-        writeln!(f, "  Improvement: {}/{:>4}", format!("{:>4}", self.nodes_improvement).color(nodes_improvement_color), self.entries)?;
-        writeln!(f, "")?;
-
-        writeln!(f, "Time")?;
-        writeln!(f, "----")?;
-        writeln!(f, "  Total:       {:>9}ms", self.time_total)?;
-        writeln!(f, "  Average:     {:>9}ms", self.time_average)?;
-        writeln!(f, "  Relative:    {}", format!("{:>+9.2}%", 100.0*self.time_relative_average).color(time_relative_color))?;
-        writeln!(f, "  Improvement: {}/{:>4}", format!("{:>4}", self.time_improvement).color(time_improvement_color), self.entries)?;
-        writeln!(f, "")?;
-
-        writeln!(f, "Nps")?;
-        writeln!(f, "---")?;
-        writeln!(f, "  Average:     {:>9}knps", self.nps_average)?;
-        writeln!(f, "  Relative:    {}", format!("{:>+9.2}%", 100.0*self.nps_relative_average).color(nps_relative_color))?;
-        writeln!(f, "  Improvement: {}/{:>4}", format!("{:>4}", self.nps_improvement).color(nps_improvement_color), self.entries)?;
-        writeln!(f, "")?;
-
-        writeln!(f, "Branching factor ")?;
-        writeln!(f, "----------------")?;
-        writeln!(f, "  Average:     {:>9.2}", self.branching_factor_average)?;
-        writeln!(f, "  Relative:    {}", format!("{:>+9.2}%", 100.0*self.branching_factor_relative_average).color(branching_factor_relative_color))?;
-        writeln!(f, "  Improvement: {}/{:>4}", format!("{:>4}", self.branching_factor_improvement).color(branching_factor_improvement_color), self.entries)?;
-
-        Ok(())
+    fn div(self, rhs: usize) -> Self::Output {
+        Self {
+            position: self.position,
+            depth: self.depth,
+            nodes: self.nodes / rhs,
+            time: self.time / rhs,
+            nps: self.nps / rhs,
+            score: self.score / rhs,
+            branching_factor: self.branching_factor / rhs,
+        }
     }
 }
 
-pub fn relative(first: f32, second: f32) -> f32 {
-    (second - first) / second
+impl Sum for Diff {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::default(), |acc, val| acc + val)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// 
+/// Nodes
+///
+////////////////////////////////////////////////////////////////////////////////
+#[derive(PartialEq, Eq, Serialize, Deserialize, Copy, Clone, Default)]
+pub struct Nodes(pub u32);
+
+impl PartialOrd for Nodes {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(other.0.cmp(&self.0))
+    }
+}
+
+impl Ord for Nodes {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other.0.cmp(&self.0)
+    }
+}
+
+impl Add for Nodes {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Div<usize> for Nodes {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self(self.0 / rhs as u32)
+    }
+}
+
+impl Display for Nodes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} nodes", self.0)
+    }
+}
+
+#[derive(Default)]
+pub struct NodeDiff {
+    first: Nodes,
+    second: Nodes,
+    relative: f32,
+}
+
+impl Add for NodeDiff {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            first: self.first + rhs.first,
+            second: self.second + rhs.second,
+            relative: self.relative + rhs.relative,
+        }
+    }
+}
+
+impl Div<usize> for NodeDiff {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self {
+            first: self.first / rhs,
+            second: self.second / rhs,
+            relative: self.relative / rhs as f32,
+        }
+    }
+}
+
+impl NodeDiff {
+    pub fn new(first: Nodes, second: Nodes) -> Self {
+
+        let relative = (second.0 as f32 - first.0 as f32) / first.0 as f32;
+        Self { first, second, relative }
+    }
+}
+
+impl Display for NodeDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // NOTE: Custom definition of >/< !!!
+        let color = if self.second > self.first {
+            Color::Green
+        } else if self.second < self.first {
+            Color::Red
+        } else {
+            Color::Black
+        };
+
+        let first = format!("{}", self.first).color(Color::Black);
+        let second = format!("{}", self.second).color(color);
+        let relative = format!(
+            "({})", 
+            format!("{:>+.2}%", 100.0 * self.relative).color(color)
+        );
+
+        write!(f, "{:>15} {:>15} {:>20}", first, second, relative)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// 
+/// Time
+///
+////////////////////////////////////////////////////////////////////////////////
+#[derive(PartialEq, Eq, Serialize, Deserialize, Copy, Clone, Default)]
+pub struct Time(pub u64);
+
+impl Display for Time {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}ms", self.0)
+    }
+}
+
+impl PartialOrd for Time {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(other.0.cmp(&self.0))
+    }
+}
+
+impl Ord for Time {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other.0.cmp(&self.0)
+    }
+}
+
+impl Add for Time {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Div<usize> for Time {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self(self.0 / rhs as u64)
+    }
+}
+
+#[derive(Default)]
+pub struct TimeDiff {
+    first: Time,
+    second: Time,
+    relative: f32,
+}
+
+impl TimeDiff {
+    pub fn new(first: Time, second: Time) -> Self {
+        let relative = (second.0 as f32 - first.0 as f32) / first.0 as f32;
+        Self { first, second, relative }
+    }
+}
+
+impl Display for TimeDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // NOTE: Custom definition of >/< !!!
+        let color = if self.second > self.first {
+            Color::Green
+        } else if self.second < self.first {
+            Color::Red
+        } else {
+            Color::Black
+        };
+
+        let first = format!("{}", self.first).color(Color::Black);
+        let second = format!("{}", self.second).color(color);
+        let relative = format!(
+            "({})", 
+            format!("{:>+.2}%", 100.0 * self.relative).color(color)
+        );
+
+        write!(f, "{:>7} {:>7} {:>20}", first, second, relative)
+    }
+}
+
+impl Add for TimeDiff {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            first: self.first + rhs.first,
+            second: self.second + rhs.second,
+            relative: self.relative + rhs.relative,
+        }
+    }
+}
+
+impl Div<usize> for TimeDiff {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self {
+            first: self.first / rhs,
+            second: self.second / rhs,
+            relative: self.relative / rhs as f32,
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// 
+/// Nps
+///
+////////////////////////////////////////////////////////////////////////////////
+#[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Copy, Clone, Default)]
+pub struct Nps(pub u32);
+
+impl Display for Nps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}knps", self.0)
+    }
+}
+
+impl Add for Nps {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+#[derive(Default)]
+pub struct NpsDiff {
+    first: Nps,
+    second: Nps,
+    relative: f32,
+}
+
+impl NpsDiff {
+    pub fn new(first: Nps, second: Nps) -> Self {
+        let relative = (second.0 as f32 - first.0 as f32) / first.0 as f32;
+        Self { first, second, relative }
+    }
+}
+
+impl Display for NpsDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // NOTE: Custom definition of >/< !!!
+        let color = if self.second > self.first {
+            Color::Green
+        } else if self.second < self.first {
+            Color::Red
+        } else {
+            Color::Black
+        };
+
+        let first = format!("{}", self.first).color(Color::Black);
+        let second = format!("{}", self.second).color(color);
+        let relative = format!(
+            "({})", 
+            format!("{:>+.2}%", 100.0 * self.relative).color(color)
+        );
+
+        write!(f, "{:>8} {:>8} {:>20}", first, second, relative)
+    }
+}
+
+impl Add for NpsDiff {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            first: self.first + rhs.first,
+            second: self.second + rhs.second,
+            relative: self.relative + rhs.relative,
+        }
+    }
+}
+
+impl Div<usize> for NpsDiff {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self {
+            first: self.first / rhs,
+            second: self.second / rhs,
+            relative: self.relative / rhs as f32,
+        }
+    }
+}
+
+impl Div<usize> for Nps {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self(self.0 / rhs as u32)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// 
+/// Branching factor
+///
+////////////////////////////////////////////////////////////////////////////////
+#[derive(PartialEq, PartialOrd, Serialize, Deserialize, Copy, Clone, Default)]
+pub struct BFactor(pub f32);
+
+impl Display for BFactor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.2}", self.0)
+    }
+}
+
+impl Add for BFactor {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Div<usize> for BFactor {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self(self.0 / rhs as f32)
+    }
+}
+
+#[derive(Default)]
+pub struct BFactorDiff {
+    first: BFactor,
+    second: BFactor,
+    relative: f32,
+}
+
+impl BFactorDiff {
+    pub fn new(first: BFactor, second: BFactor) -> Self {
+        let relative = (second.0 - first.0) / first.0;
+        Self { first, second, relative }
+    }
+}
+
+impl Display for BFactorDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // NOTE: Custom definition of >/< !!!
+        let color = if self.second < self.first {
+            Color::Green
+        } else if self.second > self.first {
+            Color::Red
+        } else {
+            Color::Black
+        };
+
+        let first = format!("{}", self.first).color(Color::Black);
+        let second = format!("{}", self.second).color(color);
+        let relative = format!(
+            "({})", 
+            format!("{:>+.2}%", 100.0 * self.relative).color(color)
+        );
+
+        write!(f, "{:>5} {:>5} {:>20}", first, second, relative)
+    }
+}
+
+impl Add for BFactorDiff {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            first: self.first + rhs.first,
+            second: self.second + rhs.second,
+            relative: self.relative + rhs.relative,
+        }
+    }
+}
+
+impl Div<usize> for BFactorDiff {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self {
+            first: self.first / rhs,
+            second: self.second / rhs,
+            relative: self.relative / rhs as f32,
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// 
+/// Score
+///
+////////////////////////////////////////////////////////////////////////////////
+#[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Copy, Clone, Default)]
+pub struct Score(pub i32);
+
+impl Display for Score {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:+.2}", self.0 as f32/ 100.0)
+    }
+}
+
+impl Add for Score {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Div<usize> for Score {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self(self.0 / rhs as i32)
+    }
+}
+
+
+#[derive(Default)]
+pub struct ScoreDiff {
+    first: Score,
+    second: Score,
+    relative: f32,
+}
+
+impl ScoreDiff {
+    pub fn new(first: Score, second: Score) -> Self {
+        let relative = (second.0 as f32 - first.0 as f32) / first.0 as f32;
+        Self { first, second, relative }
+    }
+}
+
+impl Display for ScoreDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // NOTE: Custom definition of >/< !!!
+        let color = if self.second > self.first {
+            Color::Green
+        } else if self.second < self.first {
+            Color::Red
+        } else {
+            Color::Black
+        };
+
+        let first = format!("{}", self.first).color(Color::Black);
+        let second = format!("{}", self.second).color(color);
+
+        write!(f, "{:>6} {:>6}", first, second)
+    }
+}
+
+impl Add for ScoreDiff {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            first: self.first + rhs.first,
+            second: self.second + rhs.second,
+            relative: self.relative + rhs.relative,
+        }
+    }
+}
+
+impl Div<usize> for ScoreDiff {
+    type Output = Self;
+
+    fn div(self, rhs: usize) -> Self::Output {
+        Self {
+            first: self.first / rhs,
+            second: self.second / rhs,
+            relative: self.relative / rhs as f32,
+        }
+    }
 }
