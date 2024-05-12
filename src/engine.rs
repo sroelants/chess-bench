@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::search_result::SearchResult;
 
-use simbelmyne_chess::{board::Board, movegen::moves::Move};
+use simbelmyne_chess::board::Board;
 use simbelmyne_uci::client::UciClientMessage;
 use simbelmyne_uci::engine::UciEngineMessage;
 use simbelmyne_uci::search_info::SearchInfo;
@@ -64,7 +64,6 @@ impl Engine {
     }
 
     pub fn search(&mut self, board: Board, depth: usize) -> anyhow::Result<SearchResult> {
-        let mut best_move: Option<Move> = None;
         let mut latest_info: Option<SearchInfo> = None;
 
         self.set_position(board)?;
@@ -76,8 +75,7 @@ impl Engine {
                     latest_info = Some(info);
                 },
 
-                UciEngineMessage::BestMove(mv) => {
-                    best_move = Some(mv);
+                UciEngineMessage::BestMove(_) => {
                     break;
                 },
 
@@ -85,15 +83,13 @@ impl Engine {
             }
         }
 
-        let best_move = best_move.unwrap();
-        let latest_info = latest_info.unwrap();
+        let latest_info = latest_info.unwrap_or_default();
 
         Ok(SearchResult::new(
             board, 
-            best_move, 
-            latest_info.nodes.unwrap(), 
-            latest_info.time.unwrap(), 
-            latest_info.score.unwrap(),
+            latest_info.nodes.unwrap_or_default(), 
+            latest_info.time.unwrap_or_default(), 
+            latest_info.score.unwrap_or_default(),
             depth
         ))
     }

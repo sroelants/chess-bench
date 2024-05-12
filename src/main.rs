@@ -11,7 +11,8 @@ use tabulator::Tabulator;
 use std::fs::File;
 use std::fs::write;
 
-use colored::Colorize;
+use crate::fields::Extract;
+use crate::fields::Fields;
 
 mod positions;
 mod search_result;
@@ -19,30 +20,18 @@ mod diff;
 mod report;
 mod engine;
 mod tabulator;
-
-const COL_SEP: &'static str = "│";
-const COL_WIDTH: usize = 3;
-const FEN_COL_WIDTH: usize = 72;
-const NODES_COL_WIDTH: usize = 15;
-const TIME_COL_WIDTH: usize = 8;
-const NPS_COL_WIDTH: usize = 8;
-const BF_COL_WIDTH: usize = 8;
-const SCORE_COL_WIDTH: usize = 6;
-const NODESDIFF_COL_WIDTH: usize = 50;
-const TIMEDIFF_COL_WIDTH: usize = 45;
-const NPSDIFF_COL_WIDTH: usize = 45;
-const BFDIFF_COL_WIDTH: usize = 12;
-const SCOREDIFF_COL_WIDTH: usize = 20;
+mod fields;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, author, about)]
-struct Cli {
+pub struct Cli {
     /// The location of the engine binary
     #[arg(short, long)]
     engine: PathBuf,
 
-    /// The depth to which to search each position
+    /// The depth to which to search each position. Ignored when comparing 
+    /// diffs
     #[arg(short, long, default_value = "10")]
     depth: usize,
 
@@ -59,8 +48,12 @@ struct Cli {
     snapshot: PathBuf,
 
     /// Write snapshot to output file
-    #[arg(short = 'S', long = "save")]
+    #[arg(short = 'S', long)]
     save: bool,
+
+    /// Output all of the available metrics at once
+    #[arg(short, long)]
+    all: bool,
 
     /// Whether or not to include node count in the output
     #[arg(short, long)]
@@ -131,11 +124,31 @@ impl Cli {
         let mut diffs = Vec::new();
         let mut engine = Engine::new(&self.engine)?;
 
-        // TODO: These widths should be determined from the flags
-        let table = Tabulator::new()
-            .cols(6)
-            .widths(&[72, 45, 30, 30, 25, 15])
-            .headings(&["FEN", "Nodes", "Time", "Nps", "Branching Factor", "Score"]);
+        let fields = Fields::from(self);
+
+        let mut table = Tabulator::new();
+
+        table.add_col("FEN", 72);
+
+        if fields.nodes {
+            table.add_col("Nodes", 45);
+        }
+
+        if fields.time {
+            table.add_col("Time", 30);
+        }
+
+        if fields.nps {
+            table.add_col("Nps", 30);
+        }
+
+        if fields.branching {
+            table.add_col("Branching Factor", 25);
+        }
+
+        if fields.score {
+            table.add_col("Score", 15);
+        }
 
         println!("{}", table.header());
 
@@ -145,7 +158,8 @@ impl Cli {
             let diff = Diff::new(snapshot_result, &result);
 
             // Print the diff in a table
-            println!("{}", table.row(&self.diff_entries(&diff)));
+            let row = diff.extract(&fields);
+            println!("{}", table.row(&row));
 
             // Store the result
             results.push(result);
@@ -155,8 +169,11 @@ impl Cli {
         // Print averages, potentially behind a flag
         println!("{}", table.row_separator());
         let averages = diffs.into_iter().sum::<Diff>() / results.len();
-        println!("{}", table.row(&self.diff_averages_entries(&averages)));
+        let averages = averages.extract(&fields);
 
+        println!("{}", table.row(&averages));
+
+        // Print footer line
         println!("{}", table.footer());
 
         Ok(results)
@@ -170,106 +187,54 @@ impl Cli {
         let mut results = Vec::new();
         let mut engine = Engine::new(&self.engine)?;
 
-        // TODO: These widths should be determined from the flags
-        let table = Tabulator::new()
-            .cols(5)
-            .widths(&vec![80, 45, 35, 50, 12]);
+        let fields = Fields::from(self);
+
+        let mut table = Tabulator::new();
+
+        table.add_col("FEN", 72);
+
+        if fields.nodes {
+            table.add_col("Nodes", 20);
+        }
+
+        if fields.time {
+            table.add_col("Time", 10);
+        }
+
+        if fields.nps {
+            table.add_col("Nps", 10);
+        }
+
+        if fields.branching {
+            table.add_col("Branching", 10);
+        }
+
+        if fields.score {
+            table.add_col("Score", 10);
+        }
+
+        println!("{}", table.header());
 
         for fen in suite {
             let board = fen.parse()?;
             let result = engine.search(board, self.depth)?;
 
-            // self.print_result(&result);
+            let row = result.extract(&fields);
+            println!("{}", table.row(&row));
+
             results.push(result);
         }
 
+        // Print averages, potentially behind a flag
+        println!("{}", table.row_separator());
+        let averages = results.clone().into_iter().sum::<SearchResult>() / results.len();
+        let averages = averages.extract(&fields);
+
+        println!("{}", table.row(&averages));
+
+        // Print footer line
+        println!("{}", table.footer());
+
         Ok(results)
-    }
-
-    /// Given the CLI flags, return a Vec of the requested table entries for a 
-    /// search result
-    fn result_entries(&self, result: &SearchResult) -> Vec<String> {
-        let mut entries = Vec::new();
-        entries.push(format!("{}", result.position.to_string().blue()));
-
-        if self.nodes {
-            entries.push(result.nodes.to_string());
-        }
-
-        if self.time {
-            entries.push(result.time.to_string());
-        }
-
-        if self.nps {
-            entries.push(result.nps.to_string());
-        }
-
-        if self.branching {
-            entries.push(result.branching_factor.to_string());
-        }
-
-        if self.score {
-            entries.push(result.score.to_string());
-        }
-
-        entries
-    }
-
-    /// Given the CLI flags, return a Vec of the requested table entries for a 
-    /// diff
-    fn diff_entries(&self, diff: &Diff) -> Vec<String> {
-        let mut entries = Vec::new();
-
-        entries.push(format!("{}", diff.position.to_string().blue()));
-
-        if self.nodes {
-            entries.push(diff.nodes.to_string());
-        }
-
-        if self.time {
-            entries.push(diff.time.to_string());
-        }
-
-        if self.nps {
-            entries.push(diff.nps.to_string());
-        }
-
-        if self.branching {
-            entries.push(diff.branching_factor.to_string());
-        }
-
-        if self.score {
-            entries.push(diff.score.to_string());
-        }
-
-        entries
-    }
-
-    fn diff_averages_entries(&self, diff: &Diff) -> Vec<String> {
-        let mut entries = Vec::new();
-
-        entries.push(String::from("Averages"));
-
-        if self.nodes {
-            entries.push(diff.nodes.to_string());
-        }
-
-        if self.time {
-            entries.push(diff.time.to_string());
-        }
-
-        if self.nps {
-            entries.push(diff.nps.to_string());
-        }
-
-        if self.branching {
-            entries.push(diff.branching_factor.to_string());
-        }
-
-        if self.score {
-            entries.push(String::from(""));
-        }
-
-        entries
     }
 }

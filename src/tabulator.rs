@@ -1,5 +1,3 @@
-use std::iter::repeat;
-
 const SEP_WIDTH: usize = 3;
 
 /// Helper struct that lets up print tabulated data in a sane way
@@ -19,27 +17,10 @@ impl Tabulator {
         }
     }
 
-    pub fn cols(mut self, cols: usize) -> Self {
-        self.cols = cols;
-        self
-    }
-
-    pub fn widths(mut self, widths: &[usize]) -> Self {
-        self.widths = widths.iter()
-            .cloned()
-            .cycle()
-            .take(self.cols)
-            .collect();
-        self
-    }
-
-    pub fn headings(mut self, headings: &[&str]) -> Self {
-        self.names = headings.iter()
-            .map(|s| s.to_string())
-            .chain(repeat(String::from("")))
-            .take(self.cols)
-            .collect();
-        self
+    pub fn add_col(&mut self, heading: &'static str, width: usize) {
+        self.names.push(heading.to_string());
+        self.widths.push(width);
+        self.cols += 1;
     }
 }
 
@@ -146,11 +127,5 @@ impl Tabulator {
         row.push_str(&format!("┤"));
 
         row
-    }
-
-    fn width(&self) -> usize {
-        self.widths.iter().sum::<usize>() 
-            + self.cols
-            + self.cols * SEP_WIDTH
     }
 }

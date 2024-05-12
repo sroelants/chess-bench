@@ -6,6 +6,8 @@ use colored::Color;
 use colored::Colorize;
 use serde::Deserialize;
 use serde::Serialize;
+use crate::fields::Extract;
+use crate::fields::Fields;
 use crate::search_result::SearchResult;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,6 +75,36 @@ impl Div<usize> for Diff {
 impl Sum for Diff {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.fold(Self::default(), |acc, val| acc + val)
+    }
+}
+
+impl Extract for Diff {
+    fn extract(&self, fields: &Fields) -> Vec<String> {
+        let mut values = Vec::new();
+
+        values.push(format!("{}", self.position.to_string().blue()));
+
+        if fields.nodes {
+            values.push(self.nodes.to_string())
+        }
+
+        if fields.time {
+            values.push(self.time.to_string())
+        }
+
+        if fields.nps {
+            values.push(self.nps.to_string())
+        }
+
+        if fields.branching {
+            values.push(self.branching_factor.to_string())
+        }
+
+        if fields.score {
+            values.push(self.score.to_string())
+        }
+
+        values
     }
 }
 
