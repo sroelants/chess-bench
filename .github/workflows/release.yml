@@ -1,0 +1,123 @@
+name: Release
+
+on: [workflow_dispatch]
+  push:
+    tags: "v*"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build
+        env:
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --target x86_64-unknown-linux-musl --bin chess-bench
+          mv target/x86_64-unknown-linux-musl/release/chess-bench cb-linux
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-linux
+          path: cb-linux
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cargo build --release -p chess-bench
+          mv .\target\release\chess-bench.exe cb-windows.exe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-windows
+          path: cb-windows
+
+  build-macos:
+    runs-on: macos-12
+    strategy:
+      matrix:
+        include:
+          - exec_postfix: "x86_64"
+            toolchain: x86_64-apple-darwin
+          - exec_postfix: "aarch64"
+            toolchain: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          rustup target add ${{ matrix.toolchain }}
+          cargo build --release --target ${{ matrix.toolchain }} -p chess-bench
+          mv target/${{ matrix.toolchain }}/release/chess-bench cb-macOS-${{ matrix.exec_postfix }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-macos
+          path: cb-macOS-${{ matrix.exec_postfix }}
+
+  release:
+    if: github.repository == 'sroelants/chess-bench'
+    needs: [build-linux, build-windows, build-macos]
+    name: Publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: cb-linux
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: cb-windows
+
+      - uses: actions/download-artifact@v2
+        with:
+          name: cb-macos
+
+
+      - name: Install hub
+        run: sudo apt-get update && sudo apt-get install -y hub
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag_name="${GITHUB_REF##*/}"
+          ls -l
+          chmod +x cb-linux
+          mv cb-windows.exe cb-${tag_name}.exe
+          mv cb-linux cb-${tag_name}
+          mv cb-macOS-x86_64 cb-${tag_name}-macOS-x86_64
+          mv cb-macOS-aarch64 cb-${tag_name}-macOS-aarch64
+          sha256sum cb-* > checksums.txt
+          echo "$tag_name" > release_description.txt
+          cat RELEASE_NOTES.md >> release_description.txt
+          gh release create --draft -F release_description.txt \
+            "${tag_name}" \
+             "checksums.txt#Checksums" \
+             "cb-${tag_name}.exe#Chess bench - Windows" \
+             "cb-${tag_name}.exe#Chess bench - Windows" \
+             "cb-${tag_name}.exe#Chess bench - Windows" \
+             "cb-${tag_name}#Simbelmyne - Linux" \
+             "cb-${tag_name}#Simbelmyne - Linux" \
+             "cb-${tag_name}#Simbelmyne - Linux" \
+             "cb-${tag_name}-macOS-aarch64#Simbelmyne - macOS (ARM)" \
+             "cb-${tag_name}-macOS-x86_64#Simbelmyne - macOS (x86_64)" \
+             "cb-${tag_name}-macOS-x86_64#Simbelmyne - macOS (x86_64)" \
+             "cb-${tag_name}-macOS-x86_64#Simbelmyne - macOS (x86_64)" \
