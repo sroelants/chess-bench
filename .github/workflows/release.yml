@@ -1,8 +1,8 @@
 name: Release
 
 on: [workflow_dispatch]
-  push:
-    tags: "v*"
+  # push:
+  #   tags: "v*"
 
 jobs:
   build-linux:
@@ -13,7 +13,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build
-        env:
         run: |
           rustup target add x86_64-unknown-linux-musl
           cargo build --release --target x86_64-unknown-linux-musl --bin chess-bench
@@ -41,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: cb-windows
-          path: cb-windows
+          path: cb-windows.exe
 
   build-macos:
     runs-on: macos-12
@@ -101,23 +100,17 @@ jobs:
           tag_name="${GITHUB_REF##*/}"
           ls -l
           chmod +x cb-linux
-          mv cb-windows.exe cb-${tag_name}.exe
-          mv cb-linux cb-${tag_name}
-          mv cb-macOS-x86_64 cb-${tag_name}-macOS-x86_64
-          mv cb-macOS-aarch64 cb-${tag_name}-macOS-aarch64
-          sha256sum cb-* > checksums.txt
+          mv cb-windows.exe chess-bench.exe
+          mv cb-linux chess-bench
+          mv cb-macOS-x86_64 chess-bench-macOS-x86_64
+          mv cb-macOS-aarch64 chess-bench-macOS-aarch64
+          sha256sum chess-bench* > checksums.txt
           echo "$tag_name" > release_description.txt
           cat RELEASE_NOTES.md >> release_description.txt
           gh release create --draft -F release_description.txt \
             "${tag_name}" \
              "checksums.txt#Checksums" \
-             "cb-${tag_name}.exe#Chess bench - Windows" \
-             "cb-${tag_name}.exe#Chess bench - Windows" \
-             "cb-${tag_name}.exe#Chess bench - Windows" \
-             "cb-${tag_name}#Simbelmyne - Linux" \
-             "cb-${tag_name}#Simbelmyne - Linux" \
-             "cb-${tag_name}#Simbelmyne - Linux" \
-             "cb-${tag_name}-macOS-aarch64#Simbelmyne - macOS (ARM)" \
-             "cb-${tag_name}-macOS-x86_64#Simbelmyne - macOS (x86_64)" \
-             "cb-${tag_name}-macOS-x86_64#Simbelmyne - macOS (x86_64)" \
-             "cb-${tag_name}-macOS-x86_64#Simbelmyne - macOS (x86_64)" \
+             "chess-bench.exe#Chess bench - Windows" \
+             "chess-bench#Simbelmyne - Linux" \
+             "chess-bench-macOS-aarch64#Simbelmyne - macOS (ARM)" \
+             "chess-bench-macOS-x86_64#Simbelmyne - macOS (x86_64)" \
