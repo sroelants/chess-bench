@@ -27,7 +27,6 @@ mod fields;
 #[command(version, author, about)]
 pub struct Cli {
     /// The location of the engine binary
-    #[arg(short, long)]
     engine: PathBuf,
 
     /// The depth to which to search each position. Ignored when comparing 
