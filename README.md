@@ -13,7 +13,23 @@ run `cb --help` for a list of options
 
 ## Examples
 ### Running a benchmark
-[![asciicast](https://asciinema.org/a/zZDBxbq1mZnbchZrH37FPe87M.svg)](https://asciinema.org/a/zZDBxbq1mZnbchZrH37FPe87M)
+Run chess-bench with the `--all`/`-a` flag to output all the available metrics
+in a table. Pass the path to the engine you'd like to benchmark with the `-e` 
+flag.
+
+```
+$ chess-bench -a -e simbelmyne
+```
+
+![chess-bench benchmark](assets/bench.png)
 
 ### Diffing against a snapshot
-[![asciicast](https://asciinema.org/a/qhuQ2gnlCwinNsvZL6jYjcbxk.svg)](https://asciinema.org/a/qhuQ2gnlCwinNsvZL6jYjcbxk)
+When running chess-bench, pass the `--save`/`-S` flag to save the results
+to `bench_snapshot.json`. The output file can be changed by passing the
+`--output`/`-o` flag.
+
+When running `chess-bench` in a directory that has a `bench_snapshot.json` file
+present (or when passed a snapshot explicitly using `--snapshot`/`-s`),
+the engine outputs a snapshot diff instead.
+
+![chess-bench benchmark](assets/snapshot.png)
