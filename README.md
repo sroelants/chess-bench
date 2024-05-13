@@ -9,21 +9,26 @@ Use chess-bench to:
    snapshots
 
 ## Usage
-run `cb --help` for a list of options
+run `chess-bench --help` for a list of options
 
 ## Examples
 ### Running a benchmark
 Run chess-bench with the `--all`/`-a` flag to output all the available metrics
-in a table. Pass the path to the engine you'd like to benchmark with the `-e` 
-flag.
+in a table. Pass the path to the engine you'd like to benchmark as the last 
+argument.
 
 ```
-$ chess-bench -a -e simbelmyne
+$ chess-bench -a simbelmyne
 ```
 
 ![chess-bench benchmark](assets/bench.png)
 
 ### Diffing against a snapshot
+```
+$ chess-bench -aS simbelmyne
+
+$ chess-bench -a stockfish
+```
 When running chess-bench, pass the `--save`/`-S` flag to save the results
 to `bench_snapshot.json`. The output file can be changed by passing the
 `--output`/`-o` flag.
